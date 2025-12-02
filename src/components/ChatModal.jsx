@@ -32,7 +32,12 @@ const ChatModal = () => {
     const chatMessages = channelId ? messages[channelId] || [] : [];
 
     const handleSendMessage = (text) => {
-        if (!text.trim() || !selectedUser) return;
+        if (!text.trim() || !selectedUser || !profile) return;
+        // Prevent sending message to yourself
+        if (selectedUser.id === profile.id) {
+            console.warn('Cannot send message to yourself');
+            return;
+        }
         sendMessage(selectedUser.id, text);
     };
 
