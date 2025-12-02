@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useChat } from './ChatContext';
 import { useShip } from './ShipContext';
@@ -20,6 +20,13 @@ export const AppContextWrapper = ({ children }) => {
     const ship = useShip();
     const users = useUsers();
     const ui = useUI();
+
+    // Auto-open profile modal if no profile exists
+    useEffect(() => {
+        if (!auth.profile && ui.openModal === null) {
+            ui.setOpenModal('profile');
+        }
+    }, [auth.profile, ui.openModal, ui.setOpenModal]);
 
     // Combine all context values into one object for backward compatibility
     const value = {
