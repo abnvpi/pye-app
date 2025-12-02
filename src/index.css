@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@layer base {
+    * {
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    input,
+    textarea,
+    [contenteditable] {
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+        cursor: text;
+    }
+
+    body {
+        cursor: default;
+    }
+
+    button {
+        cursor: pointer;
+    }
+
+    button:active {
+        background: rgba(255, 255, 255, 0.2) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+
+    button:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.5);
+        outline-offset: 2px;
+    }
+
+    svg,
+    svg * {
+        pointer-events: none;
+    }
+
+    *::selection {
+        background: rgba(255, 255, 255, 0.3);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        color: inherit;
+    }
+
+    *::-moz-selection {
+        background: rgba(255, 255, 255, 0.3);
+        color: inherit;
+    }
+}
+
+@layer utilities {
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideUp {
+        from {
+            transform: translateY(100%);
+        }
+
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes scaleIn {
+        from {
+            transform: scale(0.9);
+            opacity: 0;
+        }
+
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+
+    .animate-fadeIn {
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .animate-slideUp {
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .animate-scaleIn {
+        animation: scaleIn 0.2s ease-out;
+    }
+
+    .animate-pulse-slow {
+        animation: pulse 2s ease-in-out infinite;
+    }
+}
