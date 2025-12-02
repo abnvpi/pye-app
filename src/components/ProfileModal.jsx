@@ -21,9 +21,10 @@ const ProfileModal = () => {
             setCustomAvatar(profile.avatar);
             setIsEditing(false);
         } else {
+            // No profile - ensure we're in editing mode
             setIsEditing(true);
         }
-    }, [profile, currentShipId, openModal]);
+    }, [profile, currentShipId]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
