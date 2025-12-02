@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, getDocs, where, orderBy, limit, startAfter, writeBatch } from 'firebase/firestore';
+import { COLLECTIONS, LIMITS, TIME } from '../constants/firestore';
+import { MESSAGES } from '../constants/messages';
 
 const ChatContext = createContext();
 
@@ -14,13 +16,19 @@ export const ChatProvider = ({ children, profile }) => {
     const [messages, setMessages] = useState({});
     const [selectedUser, setSelectedUser] = useState(null);
     const [cleanupNotification, setCleanupNotification] = useState(null);
+    const [hasMoreMessages, setHasMoreMessages] = useState({});
+    const [loadingMore, setLoadingMore] = useState(false);
 
-    // Real-time Messages Listener
+    // Real-time Messages Listener with limit
     useEffect(() => {
         if (!profile?.id || !selectedUser?.id) return;
 
         const channelId = [profile.id, selectedUser.id].sort().join('_');
-        const q = query(collection(db, 'channels', channelId, 'messages'));
+        const q = query(
+            collection(db, COLLECTIONS.CHANNELS, channelId, COLLECTIONS.MESSAGES),
+            orderBy('timestamp', 'desc'),
+            limit(LIMITS.MESSAGES_INITIAL)
+        );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const msgs = snapshot.docs.map(doc => ({
@@ -29,11 +37,17 @@ export const ChatProvider = ({ children, profile }) => {
                 timestamp: doc.data().timestamp?.toDate().toISOString() || new Date().toISOString(),
                 isOwn: doc.data().senderId === profile.id,
                 sender: doc.data().senderName || 'Unknown'
-            })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            })).reverse(); // Reverse since we query desc but display asc
 
             setMessages(prev => ({
                 ...prev,
                 [channelId]: msgs
+            }));
+
+            // Set hasMore flag
+            setHasMoreMessages(prev => ({
+                ...prev,
+                [channelId]: snapshot.docs.length >= LIMITS.MESSAGES_INITIAL
             }));
         });
 
@@ -44,28 +58,40 @@ export const ChatProvider = ({ children, profile }) => {
     useEffect(() => {
         const cleanupOldMessages = async () => {
             try {
-                const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-                const channelsSnapshot = await getDocs(collection(db, 'channels'));
+                const oneHourAgo = new Date(Date.now() - TIME.MESSAGE_CLEANUP_AGE);
 
+                // Process in batches
+                const channelsQuery = query(
+                    collection(db, COLLECTIONS.CHANNELS),
+                    limit(LIMITS.CLEANUP_CHANNELS)
+                );
+
+                const channelsSnapshot = await getDocs(channelsQuery);
                 let totalDeleted = 0;
 
                 for (const channelDoc of channelsSnapshot.docs) {
-                    const messagesRef = collection(db, 'channels', channelDoc.id, 'messages');
+                    const messagesRef = collection(db, COLLECTIONS.CHANNELS, channelDoc.id, COLLECTIONS.MESSAGES);
                     const oldMessagesQuery = query(
                         messagesRef,
-                        where('timestamp', '<', oneHourAgo)
+                        where('timestamp', '<', oneHourAgo),
+                        limit(LIMITS.CLEANUP_MESSAGES)
                     );
 
                     const oldMessagesSnapshot = await getDocs(oldMessagesQuery);
 
-                    for (const msgDoc of oldMessagesSnapshot.docs) {
-                        await deleteDoc(doc(db, 'channels', channelDoc.id, 'messages', msgDoc.id));
-                        totalDeleted++;
+                    // Batch delete
+                    if (oldMessagesSnapshot.size > 0) {
+                        const batch = writeBatch(db);
+                        oldMessagesSnapshot.docs.forEach(msgDoc => {
+                            batch.delete(doc(db, COLLECTIONS.CHANNELS, channelDoc.id, COLLECTIONS.MESSAGES, msgDoc.id));
+                        });
+                        await batch.commit();
+                        totalDeleted += oldMessagesSnapshot.size;
                     }
                 }
 
                 if (totalDeleted > 0) {
-                    setCleanupNotification(`${totalDeleted} old message${totalDeleted > 1 ? 's' : ''} cleared`);
+                    setCleanupNotification(MESSAGES.NOTIFICATIONS.CLEANUP(totalDeleted));
                     setTimeout(() => setCleanupNotification(null), 5000);
                 }
             } catch (error) {
@@ -74,10 +100,60 @@ export const ChatProvider = ({ children, profile }) => {
         };
 
         cleanupOldMessages();
-        const interval = setInterval(cleanupOldMessages, 5 * 60 * 1000);
+        const interval = setInterval(cleanupOldMessages, TIME.CLEANUP_INTERVAL);
 
         return () => clearInterval(interval);
     }, []);
+
+    // Load more messages (pagination)
+    const loadMoreMessages = useCallback(async () => {
+        if (!profile?.id || !selectedUser?.id || loadingMore) return;
+
+        const channelId = [profile.id, selectedUser.id].sort().join('_');
+        const currentMessages = messages[channelId] || [];
+
+        if (!hasMoreMessages[channelId] || currentMessages.length === 0) return;
+
+        setLoadingMore(true);
+
+        try {
+            const oldestMessage = currentMessages[0];
+            const q = query(
+                collection(db, COLLECTIONS.CHANNELS, channelId, COLLECTIONS.MESSAGES),
+                orderBy('timestamp', 'desc'),
+                startAfter(new Date(oldestMessage.timestamp)),
+                limit(LIMITS.MESSAGES_LOAD_MORE)
+            );
+
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                setHasMoreMessages(prev => ({ ...prev, [channelId]: false }));
+            } else {
+                const newMessages = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    timestamp: doc.data().timestamp?.toDate().toISOString() || new Date().toISOString(),
+                    isOwn: doc.data().senderId === profile.id,
+                    sender: doc.data().senderName || 'Unknown'
+                })).reverse();
+
+                setMessages(prev => ({
+                    ...prev,
+                    [channelId]: [...newMessages, ...currentMessages]
+                }));
+
+                setHasMoreMessages(prev => ({
+                    ...prev,
+                    [channelId]: snapshot.docs.length >= LIMITS.MESSAGES_LOAD_MORE
+                }));
+            }
+        } catch (error) {
+            console.error('Error loading more messages:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [profile?.id, selectedUser?.id, messages, hasMoreMessages, loadingMore]);
 
     const sendMessage = async (toUserId, text) => {
         if (!profile?.id) return;
@@ -139,7 +215,10 @@ export const ChatProvider = ({ children, profile }) => {
         selectedUser,
         setSelectedUser,
         sendMessage,
-        cleanupNotification
+        cleanupNotification,
+        loadMoreMessages,
+        hasMoreMessages,
+        loadingMore
     };
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

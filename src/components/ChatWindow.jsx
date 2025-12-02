@@ -1,11 +1,15 @@
 import React, { useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import ChatInput from './ChatInput';
 import { useAppContext } from '../context/AppContext';
 
 const ChatWindow = ({
     selectedUser,
     messages,
-    onSendMessage
+    onSendMessage,
+    hasMoreMessages,
+    loadMoreMessages,
+    loadingMore
 }) => {
     const messagesEndRef = useRef(null);
     const { cleanupNotification } = useAppContext();
@@ -40,6 +44,19 @@ const ChatWindow = ({
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 pb-24 sm:pb-4">
+                {/* Load More Button */}
+                {hasMoreMessages && (
+                    <div className="flex justify-center mb-3">
+                        <button
+                            onClick={loadMoreMessages}
+                            disabled={loadingMore}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {loadingMore ? 'Loading...' : 'Load More Messages'}
+                        </button>
+                    </div>
+                )}
+
                 {messages.map(msg => (
                     <div key={msg.id} className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[70%] ${msg.isOwn ? 'bg-blue-600 text-white' : 'bg-white text-gray-900'} rounded-lg px-4 py-2 shadow ${msg.sending ? 'opacity-70' : ''} ${msg.failed ? 'bg-red-100 border border-red-300' : ''}`}>

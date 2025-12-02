@@ -15,7 +15,10 @@ const ChatModal = () => {
         messages,
         sendMessage,
         users,
-        currentShipId
+        currentShipId,
+        loadMoreMessages,
+        hasMoreMessages,
+        loadingMore
     } = useAppContext();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +71,9 @@ const ChatModal = () => {
                 selectedUser={selectedUser}
                 messages={chatMessages}
                 onSendMessage={handleSendMessage}
+                hasMoreMessages={hasMoreMessages[channelId] || false}
+                loadMoreMessages={loadMoreMessages}
+                loadingMore={loadingMore}
             />
         </Modal>
     );
